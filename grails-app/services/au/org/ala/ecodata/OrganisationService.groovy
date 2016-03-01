@@ -29,7 +29,36 @@ class OrganisationService {
         return Organisation.findAllByStatusNotEqual('deleted').collect{toMap(it, levelOfDetail)}
     }
 
+    def validate(props, organisationId = null) {
+        def error = null
+        def updating = organisationId != null
+
+        if (!updating && !props.containsKey("description")) {
+            //error, no start date
+            return "description is missing"
+        }
+
+        if (props.containsKey("name")) {
+            def proj = Organisation.findByName(props.name)
+            if (proj != null && (!updating || proj.organisationId != organisationId)) {
+                return "name is not unique"
+            }
+        } else if (!updating) {
+            //error, no project name
+            return "name is missing"
+        }
+
+        error
+    }
+
     def create(props, boolean createCollectoryInstitution = true) {
+
+        def error = validate(props)
+        if (error) {
+            // clear session to avoid exception when GORM tries to autoflush the changes
+            Organisation.withSession { session -> session.clear() }
+            return [status: 'error', error: error]
+        }
 
         def organisation = new Organisation(organisationId: Identifiers.getNew(true, ''), name:props.name)
 
@@ -55,7 +84,7 @@ class OrganisationService {
         catch (Exception e) {
             // clear session to avoid exception when GORM tries to autoflush the changes
             Organisation.withSession { session -> session.clear() }
-            def error = "Error creating organisation - ${e.message}"
+            error = "Error creating organisation - ${e.message}"
             log.error error
 
             def errors = (e instanceof ValidationException)?e.errors:[error]
@@ -68,6 +97,13 @@ class OrganisationService {
         def organisation = Organisation.findByOrganisationId(id)
         if (organisation) {
             try {
+                def error = validate(props, id)
+                if (error) {
+                    // clear session to avoid exception when GORM tries to autoflush the changes
+                    Organisation.withSession { session -> session.clear() }
+                    return [status: 'error', error: error]
+                }
+
                 String oldName = organisation.name
                 getCommonService().updateProperties(organisation, props)
                 if (props.name && (oldName != props.name)) {

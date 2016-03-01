@@ -38,25 +38,25 @@ class OrganisationServiceSpec extends Specification {
 
 
         def result
-            when:
-            Organisation.withNewTransaction {
-                result = service.create(orgData)
-            }
-            then: "ensure the response contains the id of the new organisation"
-                result.status == 'ok'
-                result.organisationId != null
-                1 * mockedPermissionService.addUserAsRoleToOrganisation(userId, AccessLevel.admin, !null)
+        when:
+        Organisation.withNewTransaction {
+            result = service.create(orgData)
+        }
+        then: "ensure the response contains the id of the new organisation"
+        result.status == 'ok'
+        result.organisationId != null
+        1 * mockedPermissionService.addUserAsRoleToOrganisation(userId, AccessLevel.admin, !null)
 
 
-            when: "select the new organisation back from the database"
-                def savedOrg = Organisation.findByOrganisationId(result.organisationId)
+        when: "select the new organisation back from the database"
+        def savedOrg = Organisation.findByOrganisationId(result.organisationId)
 
 
-            then: "ensure the properties are the same as the original"
-                savedOrg.name == orgData.name
-                savedOrg.description == orgData.description
-                savedOrg.collectoryInstitutionId == institutionId
-                //savedOrg['dynamicProperty'] == orgData.dynamicProperty  The dbo property on the domain object appears to be missing during unit tests which prevents dynamic properties from being retreived.
+        then: "ensure the properties are the same as the original"
+        savedOrg.name == orgData.name
+        savedOrg.description == orgData.description
+        savedOrg.collectoryInstitutionId == institutionId
+        //savedOrg['dynamicProperty'] == orgData.dynamicProperty  The dbo property on the domain object appears to be missing during unit tests which prevents dynamic properties from being retreived.
 
     }
 
@@ -69,8 +69,7 @@ class OrganisationServiceSpec extends Specification {
         def result = service.create(orgData)
 
         then:
-            result.status == 'error'
-            result.errors.hasErrors()
+        result.status == 'error'
 
     }
 
@@ -109,7 +108,62 @@ class OrganisationServiceSpec extends Specification {
         */
     }
 
+    def "test create organisation validation"() {
+        given:
+        def orgData = [name: 'test org2', description: 'test org description', dynamicProperty: 'dynamicProperty']
+        def institutionId = 'dr1'
+        def userId = '1234'
+        stubbedCollectoryService.createInstitution(_) >> institutionId
+        stubbedUserService.getCurrentUserDetails() >> [userId: userId]
 
+        def error
+
+        when: "valid organisation"
+        error = service.validate(orgData)
+        then: "no error"
+        error == null
+
+        when: "missing organisation name"
+        error = service.validate(orgData.findAll { it.key != "name" })
+        then: "error, no name"
+        error != null
+
+        when: "missing organisation description"
+        error = service.validate(orgData.findAll { it.key != "description" })
+        then: "error, no description"
+        error != null
+    }
+
+    def "test update organisation validation"() {
+        given:
+        def orgData = [name: 'test org3', description: 'test org description', dynamicProperty: 'dynamicProperty']
+        def institutionId = 'dr1'
+        def userId = '1234'
+        stubbedCollectoryService.createInstitution(_) >> institutionId
+        stubbedUserService.getCurrentUserDetails() >> [userId: userId]
+        def organisationId
+        Organisation.withNewTransaction {
+            def result = service.create(orgData)
+            organisationId = result.organisationId
+        }
+
+        def error
+
+        when: "valid organisation"
+        error = service.validate(orgData, organisationId)
+        then: "no error"
+        error == null
+
+        when: "missing organisation name"
+        error = service.validate(orgData.findAll { it.key != "name" }, organisationId)
+        then: "no error"
+        error == null
+
+        when: "missing organisation description"
+        error = service.validate(orgData.findAll { it.key != "description" }, organisationId)
+        then: "no error"
+        error == null
+    }
 
 
 }
