@@ -1,11 +1,11 @@
 package au.org.ala.ecodata
 
-import java.lang.reflect.UndeclaredThrowableException
-
-import static au.org.ala.ecodata.Status.*
-
 import au.org.ala.ecodata.reporting.Score
 
+import java.lang.reflect.UndeclaredThrowableException
+
+import static au.org.ala.ecodata.Status.ACTIVE
+import static au.org.ala.ecodata.Status.DELETED
 import static grails.async.Promises.task
 
 class ProjectService {
@@ -185,9 +185,106 @@ class ProjectService {
         }
     }
 
+    def validate(props, projectId = null) {
+        def error = null
+        def updating = projectId != null
+
+        if (!updating && !props.containsKey("isExternal")) {
+            //error, not null
+            return "isExternal is missing"
+        }
+
+        if (props.containsKey("organisationId")) {
+            def org = Organisation.findByOrganisationId(props.organisationId)
+            if (!org) {
+                //error, not valid org
+                return "organisationId is not a valid organisationId"
+            } else if (!props.containsKey("organisationName") || !org.name.equals(props.organisationName)) {
+                //fix the organisation name
+                props["organisationName"] = org.name
+            }
+        } else if (!updating) {
+            //error, no org
+            return "organisationId is missing"
+        }
+
+        if (!updating && !props.containsKey("plannedStartDate")) {
+            //error, no start date
+            return "plannedStartDate is missing"
+        }
+
+        if (props.containsKey("name")) {
+            def proj = Project.findByName(props.name)
+            if (proj != null && (!updating || proj.projectId != projectId)) {
+                return "name is not unique"
+            }
+        } else if (!updating) {
+            //error, no project name
+            return "name is missing"
+        }
+
+        if (!updating && !props.containsKey("aim")) {
+            //error, no project aim
+            return "aim is missing"
+        }
+
+        if (!updating && !props.containsKey("description")) {
+            //error, no project description
+            return "description is missing"
+        }
+
+        if (!updating && !props.containsKey("scienceType")) {
+            //error, no science type
+            return "scienceType is missing"
+        }
+
+        if (props.containsKey("difficulty")) {
+            if (!['Easy', 'Medium', 'Hard'].contains(props.difficulty)) {
+                return "difficulty is not valid."
+            }
+        } else if (!updating) {
+            //error, no difficulty
+            return "difficulty is missing"
+        }
+
+        if (!updating && !props.containsKey("task")) {
+            //error, no task
+            return "task is missing"
+        }
+
+        if (props.containsKey("projectSiteId")) {
+            def site = Site.findBySiteId(props.projectSiteId)
+            if (!site) {
+                //error, invalid site
+                return "projectSiteId is not a valid projectSiteId"
+            }
+        } else if (!updating) {
+            //error, no site id
+            return "projectSiteId is missing"
+        }
+
+        if (props.containsKey("termsOfUseAccepted")) {
+            if (!props.termsOfUseAccepted) {
+                //error, terms of use not accepted
+                return "termsOfUseAccepted is not true"
+            }
+        } else if (!updating) {
+            //error, no terms of use accepted
+            return "termsOfUseAccepted is missing"
+        }
+
+        error
+    }
+
     def create(props) {
         assert getCommonService()
         try {
+            def error = validate(props)
+            if (error) {
+                // clear session to avoid exception when GORM tries to autoflush the changes
+                Project.withSession { session -> session.clear() }
+                return [status: 'error', error: error]
+            }
             if (props.projectId && Project.findByProjectId(props.projectId)) {
                 // clear session to avoid exception when GORM tries to autoflush the changes
                 Project.withSession { session -> session.clear() }
@@ -238,6 +335,12 @@ class ProjectService {
         Project project = Project.findByProjectId(id)
         if (project) {
             try {
+                def error = validate(props, id)
+                if (error) {
+                    // clear session to avoid exception when GORM tries to autoflush the changes
+                    Project.withSession { session -> session.clear() }
+                    return [status: 'error', error: error]
+                }
                 getCommonService().updateProperties(project, props)
                 if (project.dataProviderId && project.dataProviderId != "null") {
                     collectoryService.updateDataProviderAndResource(get(id, FLAT))

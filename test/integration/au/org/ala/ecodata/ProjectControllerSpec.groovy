@@ -1,7 +1,6 @@
 package au.org.ala.ecodata
 
 import grails.converters.JSON
-import grails.test.mixin.Mock
 import grails.test.spock.IntegrationSpec
 
 class ProjectControllerSpec extends IntegrationSpec {
@@ -11,6 +10,14 @@ class ProjectControllerSpec extends IntegrationSpec {
     def projectController = new ProjectController()
 
     def setup() {
+
+        Site.withTransaction {
+            new Site(siteId: 1).save(flush: true)
+        }
+        Organisation.withTransaction {
+            new Organisation(organisationId: 1, name: "organisation").save(flush: true)
+        }
+
         projectController.projectService = projectService
         projectController.projectService.collectoryService = Mock(CollectoryService)
         projectController.projectService.webService = Mock(WebService)
@@ -23,8 +30,21 @@ class ProjectControllerSpec extends IntegrationSpec {
     void "test create project"() {
 
         setup:
+        def project = [name              : 'test proj',
+                       description       : 'test proj description',
+                       dynamicProperty   : 'dynamicProperty',
+                       isExternal        : true,
+                       name              : 'test1 name',
+                       task              : 'test task',
+                       aim               : 'test aim',
+                       scienceType       : 'test scienceType',
+                       difficulty        : 'Easy',
+                       termsOfUseAccepted: true,
+                       plannedStartDate  : new Date(),
+                       organisationId    : 1,
+                       projectSiteId     : 1]
+
         projectController.projectService.collectoryService.createDataProviderAndResource(_, _) >> [:]
-        def project = [name: 'Test Project', description: 'Test description', dynamicProperty: 'dynamicProperty']
         projectController.request.contentType = 'application/json;charset=UTF-8'
         projectController.request.content = (project as JSON).toString().getBytes('UTF-8')
         projectController.request.method = 'POST'
