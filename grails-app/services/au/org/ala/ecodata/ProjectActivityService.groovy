@@ -13,6 +13,115 @@ class ProjectActivityService {
     ActivityService activityService
     CommentService commentService
     PermissionService permissionService
+    MetadataService metadataService
+
+    def validate(props, projectActivityId = null) {
+        def error = null
+        def updating = projectActivityId != null
+        def publishing = props.containsKey("published") && props.published
+
+        if (props.containsKey("projectId")) {
+            def proj = Project.findByProjectId(props.projectId)
+            if (proj == null) {
+                return "\"${props.projectId}\" is not a valid projectId"
+            }
+        } else if (!updating) {
+            //error, no description
+            return "projectId is missing"
+        }
+
+        if (!updating && !props.containsKey("status")) {
+            //error, no status
+            return "status is missing"
+        }
+
+        if (!updating && !props.containsKey("description")) {
+            //error, no description
+            return "description is missing"
+        }
+
+        if (!updating && !props.containsKey("name")) {
+            //error, no name
+            return "name is missing"
+        }
+
+        if (!updating && !props.containsKey("attribution")) {
+            //error, no attribution
+            return "attribution is missing"
+        }
+
+        if (!updating && !props.containsKey("startDate")) {
+            //error, no start date
+            return "startDate is missing"
+        }
+
+        //error, no species constraint
+        if (props.containsKey("species")) {
+            if (!(props.species instanceof Map)) {
+                return "species is not a map"
+            }
+
+            if (props.species.containsKey("type")) {
+                if (props.species.type == 'SINGLE_SPECIES') {
+                    if (!props.species.containsKey("singleSpecies") ||
+                            !(props.species.singleSpecies instanceof Map) ||
+                            !props.species.singleSpecies.containsKey("guid") ||
+                            !props.species.singleSpecies.containsKey("name")) {
+                        return "invalid single_species for species type SINGLE_SPECIES"
+                    }
+                } else if (props.species.type == 'GROUP_OF_SPECIES'){
+                    if (!props.species.containsKey("speciesLists") ||
+                            !(props.species.speciesLists instanceof List)) {
+                        return "invalid speciesLists for species type GROUP_OF_SPECIES"
+                    }
+                    if (props.species.speciesLists.size() == 0) {
+                        return "no speciesLists defined for GROUP_OF_SPECIES"
+                    }
+                    props.species.speciesLists.each {
+                        if (!(it instanceof Map) || !it.containsKey("listName") || !it.containsKey("dataResourceUid")) {
+                            error = "invalid speciesLists item for species type GROUP_OF_SPECIES"
+                        }
+                    }
+                } else if (props.species.type != 'ALL_SPECIES') {
+                    return "\"${props.species.type}\" is not a vaild species type"
+                }
+            }
+        } else if (publishing) {
+            return "species is missing"
+        }
+
+        if (props.containsKey("pActivityFormName")) {
+            def match = metadataService.activitiesModel().activities.findAll {
+                it.name == props.pActivityFormName
+            }
+            if (match.size() == 0) {
+                return "\"${props.pActivityFormName}\" is not a valid pActivityFormName"
+            }
+        } else if (publishing) {
+            //error, no pActivityFormName
+            return "pActivityFormName is missing"
+        }
+
+        if (props.containsKey("sites")) {
+            if (!(props.sites instanceof List)) {
+                return "sites is not a list"
+            } else if (props.sites.size() == 0) {
+                return "no sites defined"
+            } else {
+                props.sites.each {
+                    def site = Site.findBySiteId(it)
+                    if (site == null) {
+                        error = "\"${it}\" is not a valid siteId"
+                    }
+                }
+            }
+        } else if (publishing) {
+            //error, no sites
+            return "sites are missing"
+        }
+
+        error
+    }
 
     /**
      * Creates an project activity.
@@ -22,6 +131,13 @@ class ProjectActivityService {
      */
     Map create(Map props) {
         Map result
+
+        def error = validate(props)
+        if (error) {
+            // clear session to avoid exception when GORM tries to autoflush the changes
+            ProjectActivity.withSession { session -> session.clear() }
+            return [status: 'error', error: error]
+        }
 
         ProjectActivity projectActivity = new ProjectActivity(projectId: props.projectId, projectActivityId: Identifiers.getNew(true, ''))
         try {
@@ -34,7 +150,7 @@ class ProjectActivityService {
         } catch (Exception e) {
             // clear session to avoid exception when GORM tries to autoflush the changes
             ProjectActivity.withSession { session -> session.clear() }
-            String error = "Error creating project activity for project ${props.projectId} - ${e.message}"
+            error = "Error creating project activity for project ${props.projectId} - ${e.message}"
             log.error error
             result = [status: 'error', error: error]
         }
@@ -54,6 +170,13 @@ class ProjectActivityService {
 
         ProjectActivity projectActivity = ProjectActivity.findByProjectActivityId(id)
         if (projectActivity) {
+            def error = validate(props, id)
+            if (error) {
+                // clear session to avoid exception when GORM tries to autoflush the changes
+                ProjectActivity.withSession { session -> session.clear() }
+                return [status: 'error', error: error]
+            }
+
             try {
                 props.remove("projectId");
                 props.remove("projectActivityId");
@@ -65,7 +188,7 @@ class ProjectActivityService {
                 result = [status: 'ok', projectActivityId: projectActivity.projectActivityId]
             } catch (Exception e) {
                 ProjectActivity.withSession { session -> session.clear() }
-                def error = "Error updating project activity ${id} - ${e.message}"
+                error = "Error updating project activity ${id} - ${e.message}"
                 log.error error, e
                 result = [status: 'error', error: error]
             }
