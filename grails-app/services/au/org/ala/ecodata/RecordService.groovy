@@ -31,6 +31,7 @@ class RecordService {
     AuthService authService
     UserService userService
     RecordAlertService recordAlertService
+    DocumentService documentService
 
     final def ignores = ["action", "controller", "associatedMedia"]
     private static final List<String> EXCLUDED_RECORD_PROPERTIES = ["_id", "activityId", "dateCreated", "json", "outputId", "projectActivityId", "projectId", "status", "dataResourceUid"]
@@ -300,6 +301,9 @@ class RecordService {
                 // Each image in Ecodata may have an associated Document entity. We need to maintain this relationship in the resulting Record entity
                 record.multimedia[idx].documentId = image.documentId
 
+                Document document = Document.findByDocumentId(image.documentId)
+                image.imageId = document?.imageId
+
                 // reconcile new with old images...
                 // Only upload images that are NOT already in images.ala.org.au
                 if (!image.creator) {
@@ -319,6 +323,11 @@ class RecordService {
                     record.multimedia[idx].imageId = imageId
                     record.multimedia[idx].identifier = getImageUrl(imageId)
 
+                    if(document) { // It is crucial to store the imageId here as the json.multimedia elements are build
+                                    // from Outputs that know nothing about imageIds
+                        document.imageId = imageId
+                        documentService.update(documentService.toMap(document), document.documentId)
+                    }
                 } else {
                     alreadyLoaded = true
                     //re-use the existing imageId rather than upload again

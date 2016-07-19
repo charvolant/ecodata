@@ -302,7 +302,7 @@ class OutputService {
                 if(node instanceof Boolean){
                     remove = []
                     output[name]?.each {
-                        // save image if document id not found
+                        // create image document if document id not found
                         if (!it.documentId) {
                             it.activityId = activityId
                             it.outputId = outputId
